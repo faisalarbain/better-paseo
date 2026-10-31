@@ -8,31 +8,47 @@ import type { PaseoApi } from "@getpaseo/client";
  */
 export async function createCompositePaseo(self: PaseoApi): Promise<PaseoApi> {
   let hosts: Array<{ serverId: string | null; label: string | null; enabled: boolean }> = [];
+  let selfServerId = "self";
+  let selfLabel = "This host";
   try {
     const dir = await self.hosts.list();
     hosts = dir.hosts ?? [];
+    selfServerId = dir.self.serverId;
+    selfLabel = dir.self.label;
   } catch {
     hosts = [];
   }
 
-  const apis: PaseoApi[] = [self];
+  const hostApis: Array<{ api: PaseoApi; serverId: string; label: string }> = [
+    { api: self, serverId: selfServerId, label: selfLabel },
+  ];
   const hostErrors: string[] = [];
   for (const h of hosts) {
     if (!h.enabled || !h.serverId) continue;
     try {
       const api = await self.hosts.client(h.serverId);
-      apis.push(api);
+      hostApis.push({ api, serverId: h.serverId, label: h.label ?? h.serverId });
     } catch (e) {
       hostErrors.push(`${h.serverId}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   // Expose debug info globally for troubleshooting.
-  (globalThis as any).__compositeDebug = { hostCount: hosts.length, apisCount: apis.length, hostErrors };
+  (globalThis as any).__compositeDebug = { hostCount: hostApis.length, apisCount: hostApis.length, hostErrors };
 
   const compositeAgents = {
     list: async (options: any) => {
-      const results = await Promise.all(apis.map((api) => api.agents.list(options).catch(() => null)));
-      const entries = results.flatMap((r, i) => (r ? r.entries.map((e: any) => ({ ...e, _hostIndex: i })) : []));
+      const results = await Promise.all(hostApis.map(({ api }) => api.agents.list(options).catch(() => null)));
+      const entries = results.flatMap((r, i) => (r ? r.entries.map((entry: any) => ({
+        ...entry,
+        // Keep provenance on the agent itself: the Tasks store unwraps
+        // `entry.agent` before building cards and classifying its workspace.
+        agent: {
+          ...entry.agent,
+          _hostIndex: i,
+          _hostServerId: hostApis[i]!.serverId,
+          _hostLabel: hostApis[i]!.label,
+        },
+      })) : []));
       // No subscription: the board uses the merged `entries` from results.flatMap,
       // so all hosts' agents show. Live updates for remote hosts are not wired
       // yet; the board refreshes on reopen.
@@ -47,7 +63,7 @@ export async function createCompositePaseo(self: PaseoApi): Promise<PaseoApi> {
     get(target, prop, receiver) {
       if (prop === "agents") return compositeAgents;
       if (prop === "dispose") {
-        return async () => { await Promise.all(apis.map((a) => a.dispose().catch(() => {}))); };
+        return async () => { await Promise.all(hostApis.map(({ api }) => api.dispose().catch(() => {}))); };
       }
       return Reflect.get(target, prop, receiver);
     },

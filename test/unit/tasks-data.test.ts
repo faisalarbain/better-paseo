@@ -2285,6 +2285,23 @@ describe("Tasks data store, archived lane", () => {
 
   const ids = (lane: LaneModel) => lane.cards.map((card) => card.id);
 
+  it("does not classify a remote agent as archived when its workspace is absent locally", async () => {
+    const remoteIdle = {
+      ...activeAgent("mbair-done", { status: "idle", workspaceId: "mbair-workspace", updatedAt: recentIso(1_000) }),
+      _hostIndex: 1,
+      _hostServerId: "srv_mbair",
+      _hostLabel: "mbair",
+    } as ReturnType<typeof makeAgent>;
+    const fake = createFakePaseo({ agents: [remoteIdle], workspaces: [workspace()] });
+    const mounted = await mountArchived(fake, true);
+    try {
+      expect(ids(mounted.current.lanes.done)).toEqual(["mbair-done"]);
+      expect(ids(mounted.current.lanes.archived)).toEqual([]);
+    } finally {
+      mounted.unmount();
+    }
+  });
+
   it("lists archived tasks and an archived workspace's in their own lane, in the done window, only when asked", async () => {
     const fake = createFakePaseo({
       agents: [
