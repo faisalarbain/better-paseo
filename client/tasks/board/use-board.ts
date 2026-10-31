@@ -502,7 +502,9 @@ export function useBoard(
         }
         void retrySearchPrompt(latest.current.paseo, card, cardById);
       },
-      onOpen: hasNavigation ? open : undefined,
+      // Opening an agent's tab is host-scoped: a remote host's agent cannot be
+      // opened from this host, so the affordance is off while one is shown.
+      onOpen: hasNavigation && !isRemoteHost ? open : undefined,
       onReveal: (agentId, parentId) => {
         // A provider subagent's row, while hidden subtasks or the filters leave its card off the board: its parent's tab.
         if (parentId && !findCard(latest.current.lanes, agentId)) open(parentId);
