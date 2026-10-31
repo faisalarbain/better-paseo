@@ -29,10 +29,11 @@ export async function createCompositePaseo(self: PaseoApi): Promise<PaseoApi> {
   const compositeAgents = {
     list: async (options: any) => {
       const results = await Promise.all(apis.map((api) => api.agents.list(options).catch(() => null)));
-      const entries = results.flatMap((r) => (r ? r.entries : []));
-      const compositeSub = createCompositeSubscription(
-        results.map((r, i) => (r && r.subscription ? { sub: r.subscription, idx: i } : null)).filter(Boolean) as any,
-      );
+      const entries = results.flatMap((r, i) => (r ? r.entries.map((e: any) => ({ ...e, _hostIndex: i })) : []));
+      // No subscription: the board uses the merged `entries` from results.flatMap,
+      // so all hosts' agents show. Live updates for remote hosts are not wired
+      // yet; the board refreshes on reopen.
+      const compositeSub = null;
       const pageInfo = results.find((r) => r?.pageInfo)?.pageInfo ?? { nextCursor: null };
       return { entries, subscription: compositeSub, pageInfo };
     },

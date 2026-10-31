@@ -83,7 +83,14 @@ export function useTaskAvailability(tasks: TasksHandle, visible: boolean, hostId
   const cards = new Map(tasks.byId);
   for (const lane of LANE_ORDER) for (const card of tasks.lanes[lane].cards) cards.set(card.id, card);
   const key = JSON.stringify([...cards.values()].map((card) => [card.id, card.location.cwd, card.location.workspaceId, card.provider, card.model, card.archived]));
-  const apply = useCallback((entries: Array<{ agentId: string; availability: TaskAvailability }>) => store.apply(hostId, entries), [store, hostId]);
+  const apply = useCallback((entries: Array<{ agentId: string; availability: TaskAvailability }>) => {
+    // Skip availability for remote-host agents (agent_missing): they live on
+    // another daemon, so this host's availability check is meaningless and
+    // would wrongly show "Task no longer exists".
+    const filtered = entries.filter((e) => e.availability?.issue?.code !== "agent_missing");
+    if (filtered.length === 0) return;
+    store.apply(hostId, filtered);
+  }, [store, hostId]);
   useEffect(() => {
     if (disabled || !visible) return;
     const ids = (JSON.parse(key) as string[][]).map((entry) => entry[0]!);
