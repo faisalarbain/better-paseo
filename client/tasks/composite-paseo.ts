@@ -33,7 +33,7 @@ export async function createCompositePaseo(self: PaseoApi): Promise<PaseoApi> {
       const compositeSub = createCompositeSubscription(
         results.map((r, i) => (r && r.subscription ? { sub: r.subscription, idx: i } : null)).filter(Boolean) as any,
       );
-      const pageInfo = results.find((r) => r?.pageInfo)?.pageInfo;
+      const pageInfo = results.find((r) => r?.pageInfo)?.pageInfo ?? { nextCursor: null };
       return { entries, subscription: compositeSub, pageInfo };
     },
     ref: (id: string) => self.agents.ref(id),
@@ -70,7 +70,7 @@ function createCompositeSubscription(subs: Array<{ sub: any; idx: number }>) {
         for (const e of snap?.entries ?? []) mergedEntries.set(e.agent.id, e);
         pending -= 1;
         if (pending <= 0) {
-          const merged = { entries: [...mergedEntries.values()] };
+          const merged = { entries: [...mergedEntries.values()], pageInfo: { nextCursor: null } };
           for (const cb of [...snapshotCallbacks]) cb(merged);
           for (const r of readyResolvers) r(merged);
           readyResolvers.length = 0;
@@ -99,7 +99,7 @@ function createCompositeSubscription(subs: Array<{ sub: any; idx: number }>) {
       if (observer.error) errorCallbacks.push((e: any) => observer.error?.(e));
       // If already resolved, fire snapshot now.
       if (pending <= 0) {
-        queueMicrotask(() => observer.snapshot?.({ entries: [...mergedEntries.values()] }));
+        queueMicrotask(() => observer.snapshot?.({ entries: [...mergedEntries.values()], pageInfo: { nextCursor: null } }));
       }
       return () => {
         const i = snapshotCallbacks.indexOf(observer.snapshot);
