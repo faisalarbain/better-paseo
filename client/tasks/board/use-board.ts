@@ -313,7 +313,7 @@ export function useBoard(
   // Closed, the board's data stays warm a while, so a quick reopen sends nothing.
   // After a reconnect the last cards stand in until the store is ready.
   const visible = useBoardVisible(rootRef, compact);
-  const availability = useTaskAvailability(useCarriedTasks(hostId, options, useTasks(activePaseo, options, lingerBoard)), visible, hostId);
+  const availability = useTaskAvailability(useCarriedTasks(hostId, options, useTasks(activePaseo, options, lingerBoard)), visible, hostId, isRemoteHost);
   const tasks = availability.tasks;
   useEffect(() => {
     if (tasks.error) toast.error(tasks.error);
@@ -489,8 +489,10 @@ export function useBoard(
   const requestProjectIcon = useCallback((projectId: string) => latest.current.tasks.requestProjectIcon(projectId), []);
   const buttonsFor = useCallback((card: TaskCard) => buttonsIn(card, language), [language]);
   const hasNavigation = props.navigation !== undefined;
-  const stopAvailable = stop.available;
-  const readAvailable = read.available;
+  // Server-side operations (stop, read, availability) only work on the current
+  // host's daemon; disable them while a remote host's agents are shown.
+  const stopAvailable = !isRemoteHost && stop.available;
+  const readAvailable = !isRemoteHost && read.available;
   const unarchiveAvailable = unarchive.available;
   const callbacks = useMemo<CardCallbacks>(
     () => ({

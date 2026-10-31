@@ -70,7 +70,7 @@ function availabilityStore(paseo: PaseoApi) {
 }
 
 /** Only an open, visible board probes its host; no timer or filesystem work per card. */
-export function useTaskAvailability(tasks: TasksHandle, visible: boolean, hostId: string) {
+export function useTaskAvailability(tasks: TasksHandle, visible: boolean, hostId: string, disabled = false) {
   const load = useRpc(tasksAvailabilityRpc);
   const latest = useRef(load);
   latest.current = load;
@@ -85,7 +85,7 @@ export function useTaskAvailability(tasks: TasksHandle, visible: boolean, hostId
   const key = JSON.stringify([...cards.values()].map((card) => [card.id, card.location.cwd, card.location.workspaceId, card.provider, card.model, card.archived]));
   const apply = useCallback((entries: Array<{ agentId: string; availability: TaskAvailability }>) => store.apply(hostId, entries), [store, hostId]);
   useEffect(() => {
-    if (!visible) return;
+    if (disabled || !visible) return;
     const ids = (JSON.parse(key) as string[][]).map((entry) => entry[0]!);
     if (ids.length === 0) return;
     let cancelled = false;
@@ -104,8 +104,9 @@ export function useTaskAvailability(tasks: TasksHandle, visible: boolean, hostId
     };
     void refresh();
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [key, visible, apply]);
+  }, [key, visible, apply, disabled]);
   const check = useCallback(async (agentId: string, operation: TaskOperation) => {
+    if (disabled) return { code: "host_unavailable", detail: null } as TaskIssue;
     try {
       const result = await latest.current({ agentIds: [agentId] });
       apply(result.entries);
@@ -115,6 +116,7 @@ export function useTaskAvailability(tasks: TasksHandle, visible: boolean, hostId
       apply([{ agentId, availability: UNREACHABLE }]);
       return UNREACHABLE.issue!;
     }
-  }, [apply, hostId]);
-  return { tasks: useMemo(() => withTaskAvailability(tasks, states, cache), [tasks, tasks.lanes, tasks.byId, states, cache]), check };
+  }, [apply, hostId, disabled]);
+  const tasksWithAvailability = useMemo(() => disabled ? tasks : withTaskAvailability(tasks, states, cache), [tasks, tasks.lanes, tasks.byId, states, cache, disabled]);
+  return { tasks: tasksWithAvailability, check };
 }
