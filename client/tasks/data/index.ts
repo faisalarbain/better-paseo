@@ -974,8 +974,17 @@ function createStore(api: PaseoApi): TaskStore {
    * the board's workspace subscription is open.
    */
   function inArchivedWorkspace(id: string): boolean {
-    const workspaceId = entries.get(id)?.agent.workspaceId;
+    const entry = entries.get(id);
+    if (!entry) return false;
+    const workspaceId = entry.agent.workspaceId;
     if (!workspacesListed || !workspaceId) return false;
+    // Remote-host agents have no local workspace; don't treat a missing one as
+    // archived (it's absent because it lives on another host).
+    const isRemote = (entry.agent as { _hostIndex?: number })._hostIndex != null && (entry.agent as { _hostIndex?: number })._hostIndex !== 0;
+    if (isRemote) {
+      const workspace = workspaces.get(workspaceId);
+      return Boolean(workspace?.archivingAt);
+    }
     const workspace = workspaces.get(workspaceId);
     return !workspace || Boolean(workspace.archivingAt);
   }
