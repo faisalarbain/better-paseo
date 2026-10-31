@@ -43,6 +43,8 @@ export interface BoardController {
   hostId: string;
   /** Number of hosts discovered (self + remotes). */
   hostCount: number;
+  /** Debug: host connection errors. */
+  hostErrors: string;
   /** Registered hosts (self + remotes) the board can switch between. */
   hosts: Array<{ id: string; label: string; local: boolean }>;
   /** The host currently shown by the board. */
@@ -226,6 +228,7 @@ export function useBoard(
   const [activePaseo, setActivePaseo] = useState<PaseoApi>(paseo);
   const [hostCount, setHostCount] = useState(0);
   const [hostNames, setHostNames] = useState<string>("");
+  const [hostErrors, setHostErrors] = useState<string>("");
   useEffect(() => {
     let cancelled = false;
     createCompositePaseo(paseo).then((composite) => {
@@ -235,6 +238,9 @@ export function useBoard(
         const names = [dir.self.label, ...(dir.hosts ?? []).filter((h: any) => h.enabled && h.serverId).map((h: any) => h.label ?? h.targetDescription)];
         setHostCount(names.length);
         setHostNames(names.join(", "));
+        // Check composite debug info.
+        const dbg = (globalThis as any).__compositeDebug;
+        if (dbg?.hostErrors?.length) setHostErrors(dbg.hostErrors.join("; "));
       }).catch(() => {});
       setActivePaseo(composite);
     }).catch(() => {
@@ -543,6 +549,7 @@ export function useBoard(
     selectedHostId: null,
     selectHost: () => {},
     hostCount,
+    hostErrors,
     language,
     strings,
     settings,
