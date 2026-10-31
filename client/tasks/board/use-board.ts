@@ -225,13 +225,16 @@ export function useBoard(
   // Unified list: merge agents from every registered host into one board.
   const [activePaseo, setActivePaseo] = useState<PaseoApi>(paseo);
   const [hostCount, setHostCount] = useState(0);
+  const [hostNames, setHostNames] = useState<string>("");
   useEffect(() => {
     let cancelled = false;
     createCompositePaseo(paseo).then((composite) => {
       if (cancelled) return;
-      // Count hosts discovered by the composite.
       paseo.hosts.list().then((dir) => {
-        if (!cancelled) setHostCount(1 + (dir.hosts?.filter((h: any) => h.enabled && h.serverId).length ?? 0));
+        if (cancelled) return;
+        const names = [dir.self.label, ...(dir.hosts ?? []).filter((h: any) => h.enabled && h.serverId).map((h: any) => h.label ?? h.targetDescription)];
+        setHostCount(names.length);
+        setHostNames(names.join(", "));
       }).catch(() => {});
       setActivePaseo(composite);
     }).catch(() => {

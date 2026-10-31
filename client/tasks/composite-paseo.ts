@@ -16,15 +16,18 @@ export async function createCompositePaseo(self: PaseoApi): Promise<PaseoApi> {
   }
 
   const apis: PaseoApi[] = [self];
+  const hostErrors: string[] = [];
   for (const h of hosts) {
     if (!h.enabled || !h.serverId) continue;
     try {
       const api = await self.hosts.client(h.serverId);
       apis.push(api);
-    } catch {
-      // Offline host: skip.
+    } catch (e) {
+      hostErrors.push(`${h.serverId}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+  // Expose debug info globally for troubleshooting.
+  (globalThis as any).__compositeDebug = { hostCount: hosts.length, apisCount: apis.length, hostErrors };
 
   const compositeAgents = {
     list: async (options: any) => {

@@ -314,6 +314,7 @@ export function PhoneBoard(props: {
         {board.hostCount > 1 ? (
           <Text style={{ fontSize: F.sm, color: colors.foregroundMuted, marginLeft: 4 }}>({board.hostCount} hosts)</Text>
         ) : null}
+        <Text style={{ fontSize: F.sm, color: colors.foregroundMuted, marginLeft: 4 }}>[{board.total}]</Text>
         {board.params.sort ? (
           // A non-default sort says so, as the desktop sort button's label does; it opens the sheet.
           <Pressable
