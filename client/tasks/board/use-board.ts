@@ -5,6 +5,7 @@ import { useTitleUpdateControl } from "../actions/title-update";
 import { TITLE_GENERATION_SETTINGS } from "../../../shared/title-generation";
 import { useToast } from "@getpaseo/plugin/client/react-native";
 import type { PaseoApi } from "@getpaseo/client";
+import { createCompositePaseo } from "../composite-paseo";
 import { DEFAULT_TASKS_SETTINGS, TASKS_SETTINGS, effectiveCard, type CardSettings, type LaneWidth, type TasksSettings } from "../../../shared/tasks-settings";
 import { permissionButtons, respondToPermission, useArchiveControl, useReadControl, useStopControl, useUnarchiveControl, type ArchiveControl, type PermissionButton, type ReadControl, type StopControl, type UnarchiveControl } from "../actions";
 import type { CardCallbacks, TaskClock } from "../cards";
@@ -219,36 +220,18 @@ export function useBoard(
   const strings = BOARD_STRINGS[language];
   const paseo = usePaseo();
   const hostToast = useToast();
-  // Host switcher: the board can show agents from any host registered in
-  // Paseo, not just the one this plugin runs on. The data layer is built
-  // around a single PaseoApi, so swapping `activePaseo` swaps the whole board.
-  const [hostDirectory, setHostDirectory] = useState<Awaited<ReturnType<PaseoApi["hosts"]["list"]>> | null>(null);
-  const [selectedHostId, setSelectedHostId] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    paseo.hosts.list().then((directory) => {
-      if (cancelled) return;
-      setHostDirectory(directory);
-      setSelectedHostId((previous) => previous ?? directory.self.serverId);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [paseo]);
-  const selfHostId = hostDirectory?.self.serverId ?? null;
+  // Unified list: merge agents from every registered host into one board.
   const [activePaseo, setActivePaseo] = useState<PaseoApi>(paseo);
   useEffect(() => {
-    if (!selectedHostId || selectedHostId === selfHostId) {
-      setActivePaseo(paseo);
-      return;
-    }
     let cancelled = false;
-    paseo.hosts.client(selectedHostId).then((api) => {
-      if (!cancelled) setActivePaseo(api);
+    createCompositePaseo(paseo).then((composite) => {
+      if (!cancelled) setActivePaseo(composite);
     }).catch(() => {
       if (!cancelled) setActivePaseo(paseo);
     });
     return () => { cancelled = true; };
-  }, [paseo, selectedHostId, selfHostId]);
-  const isRemoteHost = Boolean(selectedHostId && selfHostId && selectedHostId !== selfHostId);
+  }, [paseo]);
+  const isRemoteHost = false;
   const [notice, setNotice] = useState<BoardNotice | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dismissNotice = useCallback(() => {
@@ -545,15 +528,9 @@ export function useBoard(
 
   const board = {
     hostId,
-    hosts: hostDirectory
-      ? [{ id: hostDirectory.self.serverId, label: hostDirectory.self.label, local: true }].concat(
-          (hostDirectory.hosts ?? [])
-            .filter((h) => h.enabled && h.serverId)
-            .map((h) => ({ id: h.serverId as string, label: h.label ?? h.targetDescription, local: false })),
-        )
-      : [],
-    selectedHostId,
-    selectHost: setSelectedHostId,
+    hosts: [],
+    selectedHostId: null,
+    selectHost: () => {},
     language,
     strings,
     settings,
