@@ -27,7 +27,7 @@ import { useUpdateIndicator } from "./update-indicator";
 import { SETTINGS_STRINGS } from "../../i18n/settings-page-strings";
 import { useTasksLanguage } from "../i18n";
 
-export type FilterMenu = "project" | "workspace" | "agent" | "label" | "sort" | "laneWidth" | `chips:${ChipGroupKind}`;
+export type FilterMenu = "project" | "workspace" | "agent" | "label" | "sort" | "laneWidth" | "host" | `chips:${ChipGroupKind}`;
 
 /** Toolbar labels follow the host base size on every platform. */
 const toolbarFontSize = () => F.base;
@@ -564,16 +564,18 @@ function DesktopFilterBarView(props: {
               onClose={() => setMenu(null)}
             />
           </MenuButton>
-          <MenuButton icon={FILTER_ICONS.label} label={words.label} compact={compact} tip={tip(words.label, strings.tips.labels)} open={menu === "label"} onPress={() => toggle("label")} theme={theme}>
-            <CascadeMenu
-              sections={labelMenuSections(shown, theme, strings, (id) => setParams((p) => ({ ...p, labels: toggleItem(p.labels, id) })))}
-              theme={theme}
-              width={menuWidth(200, scale, window.width - MENU_EDGE * 2)}
-              top={toolbarButtonSize(scale) + 6}
-              align="left"
-              onClose={() => setMenu(null)}
-            />
-          </MenuButton>
+          {board.hosts.length > 1 ? (
+            <MenuButton icon="Globe" label={board.selectedHostId ? (board.hosts.find((h) => h.id === board.selectedHostId)?.label ?? "Host") : "Host"} compact={compact} tip="Switch host" open={menu === "host"} onPress={() => toggle("host")} theme={theme}>
+              <CascadeMenu
+                sections={[{ key: "hosts", items: board.hosts.map((h) => ({ key: h.id, label: h.label, checked: h.id === board.selectedHostId, onPress: () => { board.selectHost(h.id); setMenu(null); } })) }]}
+                theme={theme}
+                width={menuWidth(200, scale, window.width - MENU_EDGE * 2)}
+                top={toolbarButtonSize(scale) + 6}
+                align="left"
+                onClose={() => setMenu(null)}
+              />
+            </MenuButton>
+          ) : null}
         </View>
       </View>
       <View testID="filter-bar-end" pointerEvents="box-none" onLayout={fit.box("end")} style={{ flexShrink: tablet ? 0 : 1, maxWidth: "100%", marginLeft: "auto", height: toolbarButtonSize(scale), flexDirection: "row", alignItems: "center", gap: TOOLBAR_GAP, zIndex: menu === "sort" || menu === "laneWidth" ? 2 : 1 }}>

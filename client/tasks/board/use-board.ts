@@ -40,6 +40,12 @@ import type { TaskOperation } from "../../../shared/task-availability";
 export interface BoardController {
   /** The host the board shows; the cards key project icon colours by it, as Paseo's sidebar does. */
   hostId: string;
+  /** Registered hosts (self + remotes) the board can switch between. */
+  hosts: Array<{ id: string; label: string; local: boolean }>;
+  /** The host currently shown by the board. */
+  selectedHostId: string | null;
+  /** Switch the board to another host. */
+  selectHost: (hostId: string) => void;
   language: TasksLanguage;
   strings: BoardStrings;
   settings: TasksSettings;
@@ -213,6 +219,36 @@ export function useBoard(
   const strings = BOARD_STRINGS[language];
   const paseo = usePaseo();
   const hostToast = useToast();
+  // Host switcher: the board can show agents from any host registered in
+  // Paseo, not just the one this plugin runs on. The data layer is built
+  // around a single PaseoApi, so swapping `activePaseo` swaps the whole board.
+  const [hostDirectory, setHostDirectory] = useState<Awaited<ReturnType<PaseoApi["hosts"]["list"]>> | null>(null);
+  const [selectedHostId, setSelectedHostId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    paseo.hosts.list().then((directory) => {
+      if (cancelled) return;
+      setHostDirectory(directory);
+      setSelectedHostId((previous) => previous ?? directory.self.serverId);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [paseo]);
+  const selfHostId = hostDirectory?.self.serverId ?? null;
+  const [activePaseo, setActivePaseo] = useState<PaseoApi>(paseo);
+  useEffect(() => {
+    if (!selectedHostId || selectedHostId === selfHostId) {
+      setActivePaseo(paseo);
+      return;
+    }
+    let cancelled = false;
+    paseo.hosts.client(selectedHostId).then((api) => {
+      if (!cancelled) setActivePaseo(api);
+    }).catch(() => {
+      if (!cancelled) setActivePaseo(paseo);
+    });
+    return () => { cancelled = true; };
+  }, [paseo, selectedHostId, selfHostId]);
+  const isRemoteHost = Boolean(selectedHostId && selfHostId && selectedHostId !== selfHostId);
   const [notice, setNotice] = useState<BoardNotice | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dismissNotice = useCallback(() => {
@@ -277,7 +313,7 @@ export function useBoard(
   // Closed, the board's data stays warm a while, so a quick reopen sends nothing.
   // After a reconnect the last cards stand in until the store is ready.
   const visible = useBoardVisible(rootRef, compact);
-  const availability = useTaskAvailability(useCarriedTasks(hostId, options, useTasks(paseo, options, lingerBoard)), visible, hostId);
+  const availability = useTaskAvailability(useCarriedTasks(hostId, options, useTasks(activePaseo, options, lingerBoard)), visible, hostId);
   const tasks = availability.tasks;
   useEffect(() => {
     if (tasks.error) toast.error(tasks.error);
@@ -316,8 +352,8 @@ export function useBoard(
   // Unarchive runs through the same CLI as Stop.
   const verifyUnarchive = useCallback((agentId: string) => latest.current.tasks.refreshParent(agentId), []);
   const unarchive = useUnarchiveControl({ available: stop.available, verify: verifyUnarchive, toast });
-  const archive = useArchiveControl({ paseo, toast });
-  const titleUpdates = useTitleUpdateControl(paseo);
+  const archive = useArchiveControl({ paseo: activePaseo, toast });
+  const titleUpdates = useTitleUpdateControl(activePaseo);
   // Follow automatic titles while their source tasks are running.
   const titleSettings = useSettings(TITLE_GENERATION_SETTINGS);
   const automaticTitles = titleSettings.status === "ready" && titleSettings.values.afterFirstReply;
@@ -344,8 +380,8 @@ export function useBoard(
   // Every card the board can draw: the store's, with a card for each provider subagent.
   const unfiltered = useMemo(() => withSubagentCards(withStopReasons(titleLanes, stoppedIds, strings.stoppedManually)), [titleLanes, stoppedIds, strings.stoppedManually]);
   const [fullConversationSearch, setFullConversationSearchState] = useState(false);
-  const firstPrompts = useSearchFirstPrompts(paseo, unfiltered, fullConversationSearch ? "" : filters.query);
-  const conversations = useSearchConversations(paseo, unfiltered, fullConversationSearch ? filters.query : "");
+  const firstPrompts = useSearchFirstPrompts(activePaseo, unfiltered, fullConversationSearch ? "" : filters.query);
+  const conversations = useSearchConversations(activePaseo, unfiltered, fullConversationSearch ? filters.query : "");
   const search = fullConversationSearch ? conversations : firstPrompts;
   const filtered = useMemo(() => filterLanes(unfiltered, filters, search.messages), [unfiltered, filters, search.messages]);
   // The order is taken when the sort or the cards change, never on a clock
@@ -396,8 +432,8 @@ export function useBoard(
   }, []);
 
   // Callbacks read the latest values through a ref, so the memoized cards see stable functions.
-  const latest = useRef({ props, paseo, toast, stop, read, unarchive, archive, strings, tasks, lanes, availability, language, fullConversationSearch, search });
-  latest.current = { props, paseo, toast, stop, read, unarchive, archive, strings, tasks, lanes, availability, language, fullConversationSearch, search };
+  const latest = useRef({ props, paseo: activePaseo, toast, stop, read, unarchive, archive, strings, tasks, lanes, availability, language, fullConversationSearch, search });
+  latest.current = { props, paseo: activePaseo, toast, stop, read, unarchive, archive, strings, tasks, lanes, availability, language, fullConversationSearch, search };
   const setFullConversationSearch = useCallback((on: boolean) => {
     setFullConversationSearchState(on);
     latest.current.toast.show(latest.current.strings.fullConversationToast(on));
@@ -505,6 +541,15 @@ export function useBoard(
 
   const board = {
     hostId,
+    hosts: hostDirectory
+      ? [{ id: hostDirectory.self.serverId, label: hostDirectory.self.label, local: true }].concat(
+          (hostDirectory.hosts ?? [])
+            .filter((h) => h.enabled && h.serverId)
+            .map((h) => ({ id: h.serverId as string, label: h.label ?? h.targetDescription, local: false })),
+        )
+      : [],
+    selectedHostId,
+    selectHost: setSelectedHostId,
     language,
     strings,
     settings,
@@ -520,7 +565,7 @@ export function useBoard(
     defaults,
     filters,
     tasks,
-    paseo,
+    paseo: activePaseo,
     lanes,
     searchStatus: search.status,
     fullConversationSearch,
