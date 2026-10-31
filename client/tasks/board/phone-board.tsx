@@ -338,6 +338,19 @@ export function PhoneBoard(props: {
           </Pressable>
         ) : null}
         <View style={{ flex: 1 }} />
+        {board.hosts.length > 1 ? (
+          <RoundButton
+            icon="Globe"
+            label={board.selectedHostId ? (board.hosts.find((h) => h.id === board.selectedHostId)?.label ?? "Host") : "Host"}
+            theme={theme}
+            onPress={() => {
+              const idx = board.hosts.findIndex((h) => h.id === board.selectedHostId);
+              const next = board.hosts[(idx + 1) % board.hosts.length];
+              if (next) board.selectHost(next.id);
+            }}
+            testID="phone-host-switch"
+          />
+        ) : null}
         <RoundButton
           icon={filters.hideSubtasks ? "List" : "Network"}
           label={strings.showSubtasks}
