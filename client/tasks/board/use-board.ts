@@ -41,6 +41,8 @@ import type { TaskOperation } from "../../../shared/task-availability";
 export interface BoardController {
   /** The host the board shows; the cards key project icon colours by it, as Paseo's sidebar does. */
   hostId: string;
+  /** Number of hosts discovered (self + remotes). */
+  hostCount: number;
   /** Registered hosts (self + remotes) the board can switch between. */
   hosts: Array<{ id: string; label: string; local: boolean }>;
   /** The host currently shown by the board. */
@@ -222,10 +224,16 @@ export function useBoard(
   const hostToast = useToast();
   // Unified list: merge agents from every registered host into one board.
   const [activePaseo, setActivePaseo] = useState<PaseoApi>(paseo);
+  const [hostCount, setHostCount] = useState(0);
   useEffect(() => {
     let cancelled = false;
     createCompositePaseo(paseo).then((composite) => {
-      if (!cancelled) setActivePaseo(composite);
+      if (cancelled) return;
+      // Count hosts discovered by the composite.
+      paseo.hosts.list().then((dir) => {
+        if (!cancelled) setHostCount(1 + (dir.hosts?.filter((h: any) => h.enabled && h.serverId).length ?? 0));
+      }).catch(() => {});
+      setActivePaseo(composite);
     }).catch(() => {
       if (!cancelled) setActivePaseo(paseo);
     });
@@ -531,6 +539,7 @@ export function useBoard(
     hosts: [],
     selectedHostId: null,
     selectHost: () => {},
+    hostCount,
     language,
     strings,
     settings,
