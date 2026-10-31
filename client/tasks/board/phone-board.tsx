@@ -315,6 +315,7 @@ export function PhoneBoard(props: {
           <Text style={{ fontSize: F.sm, color: colors.foregroundMuted, marginLeft: 4 }}>({board.hostCount} hosts)</Text>
         ) : null}
         <Text style={{ fontSize: F.sm, color: colors.foregroundMuted, marginLeft: 4 }}>[{board.total}]</Text>
+        <Text style={{ fontSize: F.sm, color: colors.foregroundMuted, marginLeft: 4 }}>(apis:{board.apiCount})</Text>
         {board.hostErrors ? (
           <Text style={{ fontSize: F.sm, color: "red", marginLeft: 4 }}>{board.hostErrors}</Text>
         ) : null}
