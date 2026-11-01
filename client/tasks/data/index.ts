@@ -750,8 +750,7 @@ function buildBaseCard(
     // A closed agent with attention that Mark read (or a tab) resumes is
     // initializing for a moment while it stays in review: it is loading, not
     // working, so it gets no Stop to flash in Mark read's place.
-    stoppable: ((agent as PaseoAgent & { _hostIndex?: number })._hostIndex ?? 0) === 0 &&
-      (agent.status === "running" || (agent.status === "initializing" && classification.lane === "running") || pendingPermissions.length > 0),
+    stoppable: agent.status === "running" || (agent.status === "initializing" && classification.lane === "running") || pendingPermissions.length > 0,
     closed: agent.status === "closed",
   };
 }
@@ -978,17 +977,8 @@ function createStore(api: PaseoApi): TaskStore {
    * the board's workspace subscription is open.
    */
   function inArchivedWorkspace(id: string): boolean {
-    const entry = entries.get(id);
-    if (!entry) return false;
-    const workspaceId = entry.agent.workspaceId;
+    const workspaceId = entries.get(id)?.agent.workspaceId;
     if (!workspacesListed || !workspaceId) return false;
-    // Remote-host agents have no local workspace; don't treat a missing one as
-    // archived (it's absent because it lives on another host).
-    const isRemote = (entry.agent as { _hostIndex?: number })._hostIndex != null && (entry.agent as { _hostIndex?: number })._hostIndex !== 0;
-    if (isRemote) {
-      const workspace = workspaces.get(workspaceId);
-      return Boolean(workspace?.archivingAt);
-    }
     const workspace = workspaces.get(workspaceId);
     return !workspace || Boolean(workspace.archivingAt);
   }

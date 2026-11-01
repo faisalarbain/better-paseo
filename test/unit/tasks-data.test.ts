@@ -2285,7 +2285,7 @@ describe("Tasks data store, archived lane", () => {
 
   const ids = (lane: LaneModel) => lane.cards.map((card) => card.id);
 
-  it("does not classify a remote agent as archived when its workspace is absent locally", async () => {
+  it("keeps remote agents in their normal lanes when unified workspaces include their owner workspace", async () => {
     const remoteIdle = {
       ...activeAgent("mbair-done", { status: "idle", workspaceId: "mbair-workspace", updatedAt: recentIso(1_000) }),
       _hostIndex: 1,
@@ -2298,13 +2298,16 @@ describe("Tasks data store, archived lane", () => {
       _hostServerId: "srv_mbair",
       _hostLabel: "mbair",
     } as ReturnType<typeof makeAgent>;
-    const fake = createFakePaseo({ agents: [remoteIdle, remoteRunning], workspaces: [workspace()] });
+    const fake = createFakePaseo({
+      agents: [remoteIdle, remoteRunning],
+      workspaces: [workspace(), makeWorkspace({ id: "mbair-workspace", name: "mbair-workspace" })],
+    });
     const mounted = await mountArchived(fake, true);
     try {
       expect(ids(mounted.current.lanes.done)).toEqual(["mbair-done"]);
       expect(ids(mounted.current.lanes.archived)).toEqual([]);
       expect(ids(mounted.current.lanes.running)).toEqual(["mbair-running"]);
-      expect(mounted.current.byId.get("mbair-running")).toMatchObject({ remoteHost: true, hostServerId: "srv_mbair", stoppable: false });
+      expect(mounted.current.byId.get("mbair-running")).toMatchObject({ remoteHost: true, hostServerId: "srv_mbair", stoppable: true });
     } finally {
       mounted.unmount();
     }

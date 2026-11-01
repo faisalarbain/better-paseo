@@ -16,6 +16,10 @@ function api(serverId: string, agentId: string) {
       list: async () => ({ requestId: "req", entries: [{ agent: { id: agentId } }], pageInfo: { nextCursor: null } }),
       ref,
     },
+    workspaces: {
+      list: async () => ({ requestId: "req-ws", entries: [{ id: `${serverId}-workspace` }], pageInfo: { nextCursor: null } }),
+      ref: vi.fn((id: string) => ({ refresh: async () => ({ id }) })),
+    },
     dispose: async () => {},
   } as any;
   return { paseo, ref, refresh };
@@ -36,5 +40,9 @@ describe("createCompositePaseo", () => {
     await composite.agents.ref("remote-agent").refresh();
     expect(remoteApi.ref).toHaveBeenCalledWith("remote-agent");
     expect(local.ref).not.toHaveBeenCalledWith("remote-agent");
+    const workspaces = await composite.workspaces.list({ subscribe: {} } as any);
+    expect(workspaces.entries.map((workspace: any) => workspace.id)).toEqual(["srv_local-workspace", "srv_remote-workspace"]);
+    await composite.workspaces.ref("srv_remote-workspace").refresh();
+    expect(remoteApi.paseo.workspaces.ref).toHaveBeenCalledWith("srv_remote-workspace");
   });
 });

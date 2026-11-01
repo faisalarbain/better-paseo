@@ -35,7 +35,7 @@ export type TasksStopResult = z.output<typeof tasksStopResultSchema>;
  */
 export const tasksStopRpc = defineRpc({
   name: "tasks.stop",
-  input: z.object({ agentIds: z.array(z.string().min(1)).min(1).max(50) }),
+  input: z.object({ agentIds: z.array(z.string().min(1)).min(1).max(50), serverId: z.string().min(1).optional() }),
   output: z.object({ results: z.array(tasksStopResultSchema) }),
 });
 

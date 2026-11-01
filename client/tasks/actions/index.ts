@@ -272,7 +272,7 @@ export function useStopControl(options: {
   const stoppedRpcRef = useRef(stoppedRpc);
   stoppedRpcRef.current = stoppedRpc;
   const phasesRef = useRef<Record<string, StopPhase>>({});
-  const timersRef = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; withChildren: boolean; self: boolean }>());
+  const timersRef = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; withChildren: boolean; self: boolean; serverId?: string }>());
   const stoppedRef = useRef(new Set<string>());
   const mountedRef = useRef(false);
   const capabilitiesRef = useRef(capabilitiesRpc);
@@ -384,7 +384,7 @@ export function useStopControl(options: {
   }, [settle]);
 
   /** Sends the stop and checks it took. */
-  const run = useCallback((agentId: string, agentIds: string[]) => {
+  const run = useCallback((agentId: string, agentIds: string[], serverId?: string) => {
     if ((phasesRef.current[agentId] ?? "idle") === "stopping") return;
     clearTimer(agentId);
     updatePhase(agentId, "stopping");
@@ -392,7 +392,7 @@ export function useStopControl(options: {
     // The RPC accepts at most 50 IDs. Keep each batch's successes even if another request fails.
     const batches = Array.from({ length: Math.ceil(agentIds.length / 50) }, (_, index) => agentIds.slice(index * 50, (index + 1) * 50));
     void Promise.all(batches.map((ids) =>
-      withTimeout(Promise.resolve().then(() => stopRpcRef.current({ agentIds: ids })), STOP_RPC_TIMEOUT_MS, timeoutMessage)
+      withTimeout(Promise.resolve().then(() => stopRpcRef.current({ agentIds: ids, ...(serverId ? { serverId } : {}) })), STOP_RPC_TIMEOUT_MS, timeoutMessage)
         .then((result) => result.results)
         .catch((error: unknown) => ids.map((id) => ({ agentId: id, ok: false, error: shortError(error) }))),
     )).then((batches) => {
@@ -434,6 +434,7 @@ export function useStopControl(options: {
     const confirmation = currentPhase === "confirming" && stopOptions?.dialog !== true ? timersRef.current.get(agentId) : undefined;
     const withChildren = confirmation ? confirmation.withChildren : stopOptions?.withChildren === true;
     const agentIds = stopTargets(card, withChildren, cardByIdRef.current).filter((id) => confirmation?.self !== false || id !== agentId);
+    const serverId = confirmation?.serverId ?? card.hostServerId;
     if (agentIds.length === 0) {
       cancel(agentId);
       if (withChildren && activeStopChildren(card).length > 0) {
@@ -455,7 +456,7 @@ export function useStopControl(options: {
           .catch(() => false)
           .then((yes) => {
             close();
-            if (yes && mountedRef.current) run(agentId, agentIds);
+            if (yes && mountedRef.current) run(agentId, agentIds, serverId);
           });
         return;
       }
@@ -463,7 +464,7 @@ export function useStopControl(options: {
         { text: text.cancel, style: "cancel", onPress: close },
         { text: text.confirm, style: "destructive", onPress: () => {
           close();
-          if (mountedRef.current) run(agentId, agentIds);
+          if (mountedRef.current) run(agentId, agentIds, serverId);
         } },
       ], { cancelable: true, onDismiss: close });
       return;
@@ -476,11 +477,11 @@ export function useStopControl(options: {
         timersRef.current.delete(agentId);
         if (phasesRef.current[agentId] === "confirming") updatePhase(agentId, "idle");
       }, CONFIRMATION_MS);
-      timersRef.current.set(agentId, { timer, withChildren, self: card.stoppable });
+      timersRef.current.set(agentId, { timer, withChildren, self: card.stoppable, serverId });
       return;
     }
 
-    run(agentId, agentIds);
+    run(agentId, agentIds, serverId);
   }, [available, cancel, clearTimer, options.confirmStop, run, updatePhase]);
 
   // One object until something in it changes: the lanes' lists take it as `extraData`.

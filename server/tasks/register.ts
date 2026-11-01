@@ -3,6 +3,7 @@ import { access, readFile, realpath, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { delimiter, dirname, join } from "node:path";
 import { execCommand, type PluginServerContext } from "@getpaseo/plugin/server";
+import type { PaseoApi } from "@getpaseo/client";
 import { TASKS_SETTINGS } from "../../shared/tasks-settings";
 import { createStopMarks, readMarksPath, stopMarksPath } from "./stop-marks";
 import { connectHostDaemon, createSubagentWatch, hasHostDaemon, type HostDaemon, type SubagentWatch } from "./provider-subagents";
@@ -122,8 +123,8 @@ function resolveCli(): Promise<CliCommand | null> {
   return cliPromise;
 }
 
-function runCli(cli: CliCommand, args: string[], timeout: number) {
-  return execCommand(cli.command, [...cli.args, ...args], { timeout, env: process.env });
+function runCli(cli: CliCommand, args: string[], timeout: number, hostTarget?: string) {
+  return execCommand(cli.command, [...cli.args, ...(hostTarget ? ["--host", hostTarget] : []), ...args], { timeout, env: process.env });
 }
 
 function isCliStopOutput(value: unknown): value is CliStopOutput {
@@ -148,11 +149,11 @@ function cliErrorMessage(error: unknown, doing = "stopping", verb = "stop"): str
   return `Paseo CLI failed to ${verb} the agent.`;
 }
 
-async function stopAgent(cli: CliCommand, agentId: string): Promise<{ ok: boolean; error: string | null }> {
+async function stopAgent(cli: CliCommand, agentId: string, hostTarget?: string): Promise<{ ok: boolean; error: string | null }> {
   if (!AGENT_ID_PATTERN.test(agentId)) return { ok: false, error: "Invalid agent ID." };
 
   try {
-    const { stdout } = await runCli(cli, ["agent", "stop", agentId, "--json"], STOP_TIMEOUT_MS);
+    const { stdout } = await runCli(cli, ["agent", "stop", agentId, "--json"], STOP_TIMEOUT_MS, hostTarget);
 
     let output: unknown;
     try {
@@ -164,6 +165,21 @@ async function stopAgent(cli: CliCommand, agentId: string): Promise<{ ok: boolea
     return { ok: true, error: null };
   } catch (error) {
     return { ok: false, error: cliErrorMessage(error) };
+  }
+}
+
+/** Resolve a card's owner to the daemon endpoint the local CLI can target. */
+async function stopHostTarget(paseo: PaseoApi, serverId?: string): Promise<{ target: string | null; error: string | null }> {
+  if (!serverId) return { target: null, error: null };
+  try {
+    const directory = await paseo.hosts.list();
+    if (directory.self.serverId === serverId) return { target: null, error: null };
+    const host = directory.hosts.find((entry) => entry.serverId === serverId);
+    if (!host || !host.enabled) return { target: null, error: "Host is not registered or enabled." };
+    if (host.status !== "online") return { target: null, error: `Host is ${host.status}.` };
+    return { target: host.targetDescription, error: null };
+  } catch (error) {
+    return { target: null, error: error instanceof Error ? error.message : "Could not resolve the task's host." };
   }
 }
 
@@ -404,17 +420,22 @@ export function registerTasksServer(
   server.handle(tasksReadsRpc, async () => ({
     reads: (await reads.list()).map(({ agentId, stoppedAt }) => ({ agentId, readAt: stoppedAt })),
   }));
-  server.handle(tasksStopRpc, async ({ agentIds }) => {
+  server.handle(tasksStopRpc, async ({ agentIds, serverId }, { paseo }) => {
     const cli = await resolveCli();
     const results: Array<{ agentId: string; ok: boolean; error: string | null }> = [];
+    const target = await stopHostTarget(paseo, serverId);
 
     for (const agentId of agentIds) {
       if (!cli) {
         results.push({ agentId, ok: false, error: "Paseo CLI is unavailable." });
         continue;
       }
+      if (target.error) {
+        results.push({ agentId, ok: false, error: target.error });
+        continue;
+      }
 
-      const result = await stopAgent(cli, agentId);
+      const result = await stopAgent(cli, agentId, target.target ?? undefined);
       if (result.ok) await stops.mark(agentId);
       results.push({ agentId, ...result });
     }

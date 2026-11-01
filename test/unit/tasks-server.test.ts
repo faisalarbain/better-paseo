@@ -103,6 +103,26 @@ afterEach(async () => {
 });
 
 describe("Tasks server stop RPC", () => {
+  it("routes a remote stop through the registered host endpoint", async () => {
+    const configured = await executable(tempRoot, "configured paseo");
+    process.env.PASEO_CLI = configured;
+    execCommand.mockResolvedValue({ stdout: validJson, stderr: "" });
+    const handlers = await registerHandlers();
+    const paseo = {
+      hosts: {
+        list: async () => ({
+          self: { serverId: "srv-local", label: "local" },
+          hosts: [{ serverId: "srv-mbair", enabled: true, status: "online", targetDescription: "tcp://100.99.96.119:6767" }],
+        }),
+      },
+    } as unknown as PaseoApi;
+
+    await expect(invoke(handlers, "tasks.stop", { agentIds: ["agent-a"], serverId: "srv-mbair" }, paseo)).resolves.toEqual({
+      results: [{ agentId: "agent-a", ok: true, error: null }],
+    });
+    expect(execCommand).toHaveBeenCalledWith(configured, ["--host", "tcp://100.99.96.119:6767", "agent", "stop", "agent-a", "--json"], expect.any(Object));
+  });
+
   it("prefers an executable PASEO_CLI, reports capability, and passes the host environment", async () => {
     const configured = await executable(tempRoot, "configured paseo");
     const pathCandidate = await executable(join(tempRoot, "bin"));

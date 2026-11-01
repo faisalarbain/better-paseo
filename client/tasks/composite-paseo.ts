@@ -35,10 +35,39 @@ export async function createCompositePaseo(self: PaseoApi): Promise<PaseoApi> {
   }
   // Expose debug info globally for troubleshooting.
   (globalThis as any).__compositeDebug = { hostCount: hostApis.length, apisCount: hostApis.length, hostErrors };
+  const workspaceHosts = new Map<string, PaseoApi>();
+
+  const compositeWorkspaces = new Proxy(self.workspaces, {
+    get(target, prop, receiver) {
+      if (prop === "list") {
+        return async (options: any = {}) => {
+          // The Tasks store consumes initial lists and explicitly refreshes;
+          // don't create per-host subscriptions that it cannot release/merge.
+          const { subscribe: _subscribe, ...query } = options;
+          const results = await Promise.all(hostApis.map(({ api }) => api.workspaces.list(query).catch(() => null)));
+          const entries = results.flatMap((result, index) => {
+            if (!result) return [];
+            for (const workspace of result.entries) workspaceHosts.set(workspace.id, hostApis[index]!.api);
+            return result.entries;
+          });
+          return {
+            requestId: results.find(Boolean)?.requestId ?? "composite-workspaces",
+            entries,
+            pageInfo: { nextCursor: null },
+          };
+        };
+      }
+      if (prop === "ref") {
+        return (id: string) => (workspaceHosts.get(id) ?? self).workspaces.ref(id);
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
 
   const compositeAgents = {
     list: async (options: any) => {
-      const results = await Promise.all(hostApis.map(({ api }) => api.agents.list(options).catch(() => null)));
+      const { subscribe: _subscribe, ...query } = options ?? {};
+      const results = await Promise.all(hostApis.map(({ api }) => api.agents.list(query).catch(() => null)));
       const entries = results.flatMap((r, i) => (r ? r.entries.map((entry: any) => {
         agentHosts.set(entry.agent.id, hostApis[i]!.api);
         return {
@@ -66,6 +95,7 @@ export async function createCompositePaseo(self: PaseoApi): Promise<PaseoApi> {
   const composite = new Proxy(self, {
     get(target, prop, receiver) {
       if (prop === "agents") return compositeAgents;
+      if (prop === "workspaces") return compositeWorkspaces;
       if (prop === "dispose") {
         return async () => { await Promise.all(hostApis.map(({ api }) => api.dispose().catch(() => {}))); };
       }
