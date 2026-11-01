@@ -22,6 +22,7 @@ export async function createCompositePaseo(self: PaseoApi): Promise<PaseoApi> {
   const hostApis: Array<{ api: PaseoApi; serverId: string; label: string }> = [
     { api: self, serverId: selfServerId, label: selfLabel },
   ];
+  const agentHosts = new Map<string, PaseoApi>();
   const hostErrors: string[] = [];
   for (const h of hosts) {
     if (!h.enabled || !h.serverId) continue;
@@ -38,17 +39,20 @@ export async function createCompositePaseo(self: PaseoApi): Promise<PaseoApi> {
   const compositeAgents = {
     list: async (options: any) => {
       const results = await Promise.all(hostApis.map(({ api }) => api.agents.list(options).catch(() => null)));
-      const entries = results.flatMap((r, i) => (r ? r.entries.map((entry: any) => ({
-        ...entry,
-        // Keep provenance on the agent itself: the Tasks store unwraps
-        // `entry.agent` before building cards and classifying its workspace.
-        agent: {
-          ...entry.agent,
-          _hostIndex: i,
-          _hostServerId: hostApis[i]!.serverId,
-          _hostLabel: hostApis[i]!.label,
-        },
-      })) : []));
+      const entries = results.flatMap((r, i) => (r ? r.entries.map((entry: any) => {
+        agentHosts.set(entry.agent.id, hostApis[i]!.api);
+        return {
+          ...entry,
+          // Keep provenance on the agent itself: the Tasks store unwraps
+          // `entry.agent` before building cards and classifying its workspace.
+          agent: {
+            ...entry.agent,
+            _hostIndex: i,
+            _hostServerId: hostApis[i]!.serverId,
+            _hostLabel: hostApis[i]!.label,
+          },
+        };
+      }) : []));
       // No subscription: the board uses the merged `entries` from results.flatMap,
       // so all hosts' agents show. Live updates for remote hosts are not wired
       // yet; the board refreshes on reopen.
@@ -56,7 +60,7 @@ export async function createCompositePaseo(self: PaseoApi): Promise<PaseoApi> {
       const pageInfo = results.find((r) => r?.pageInfo)?.pageInfo ?? { nextCursor: null };
       return { entries, subscription: compositeSub, pageInfo };
     },
-    ref: (id: string) => self.agents.ref(id),
+    ref: (id: string) => (agentHosts.get(id) ?? self).agents.ref(id),
   };
 
   const composite = new Proxy(self, {

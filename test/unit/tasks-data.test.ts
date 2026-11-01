@@ -2292,11 +2292,19 @@ describe("Tasks data store, archived lane", () => {
       _hostServerId: "srv_mbair",
       _hostLabel: "mbair",
     } as ReturnType<typeof makeAgent>;
-    const fake = createFakePaseo({ agents: [remoteIdle], workspaces: [workspace()] });
+    const remoteRunning = {
+      ...activeAgent("mbair-running", { status: "running", workspaceId: "mbair-workspace", activeTurn: { turnId: "remote-turn", startedAt: recentIso(500) } }),
+      _hostIndex: 1,
+      _hostServerId: "srv_mbair",
+      _hostLabel: "mbair",
+    } as ReturnType<typeof makeAgent>;
+    const fake = createFakePaseo({ agents: [remoteIdle, remoteRunning], workspaces: [workspace()] });
     const mounted = await mountArchived(fake, true);
     try {
       expect(ids(mounted.current.lanes.done)).toEqual(["mbair-done"]);
       expect(ids(mounted.current.lanes.archived)).toEqual([]);
+      expect(ids(mounted.current.lanes.running)).toEqual(["mbair-running"]);
+      expect(mounted.current.byId.get("mbair-running")).toMatchObject({ remoteHost: true, hostServerId: "srv_mbair", stoppable: false });
     } finally {
       mounted.unmount();
     }

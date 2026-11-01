@@ -204,6 +204,10 @@ export interface TaskChild {
 export interface TaskCard {
   availability?: TaskAvailability;
   id: string;
+  /** Host provenance for unified boards; absent on older/single-host data. */
+  hostServerId?: string;
+  hostLabel?: string;
+  remoteHost?: boolean;
   /** The agent's title, else a fallback such as the first prompt line or "Untitled". */
   title: string;
   lane: LaneId;

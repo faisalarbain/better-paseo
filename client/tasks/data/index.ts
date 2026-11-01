@@ -668,6 +668,9 @@ function buildBaseCard(
 
   return {
     id: agent.id,
+    hostServerId: (agent as PaseoAgent & { _hostServerId?: string })._hostServerId,
+    hostLabel: (agent as PaseoAgent & { _hostLabel?: string })._hostLabel,
+    remoteHost: ((agent as PaseoAgent & { _hostIndex?: number })._hostIndex ?? 0) > 0,
     title: agent.title?.trim() || (resolveTasksLanguage() === "zh" ? "未命名" : "Untitled"),
     lane: classification.lane,
     status: classification.status,
@@ -747,7 +750,8 @@ function buildBaseCard(
     // A closed agent with attention that Mark read (or a tab) resumes is
     // initializing for a moment while it stays in review: it is loading, not
     // working, so it gets no Stop to flash in Mark read's place.
-    stoppable: agent.status === "running" || (agent.status === "initializing" && classification.lane === "running") || pendingPermissions.length > 0,
+    stoppable: ((agent as PaseoAgent & { _hostIndex?: number })._hostIndex ?? 0) === 0 &&
+      (agent.status === "running" || (agent.status === "initializing" && classification.lane === "running") || pendingPermissions.length > 0),
     closed: agent.status === "closed",
   };
 }

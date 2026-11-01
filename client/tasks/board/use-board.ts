@@ -487,7 +487,7 @@ export function useBoard(
       latest.current.toast.show(latest.current.strings.archivedLane.cannotOpen);
       return;
     }
-    latest.current.props.navigation?.openAgent({ agentId });
+    latest.current.props.navigation?.openAgent({ agentId, serverId: card?.hostServerId });
   }, []);
   const requestProjectIcon = useCallback((projectId: string) => latest.current.tasks.requestProjectIcon(projectId), []);
   const buttonsFor = useCallback((card: TaskCard) => buttonsIn(card, language), [language]);
@@ -519,7 +519,17 @@ export function useBoard(
       onStop: stopAvailable ? (card, stopOptions) => latest.current.stop.press(card, stopOptions) : undefined,
       onCancelStop: (agentId) => latest.current.stop.cancel(agentId),
       // The server cannot reach the daemon itself: no Mark read either.
-      onRead: readAvailable ? (card) => write(card.id, "read", () => latest.current.read.press(card)) : undefined,
+      onRead: readAvailable ? (card) => {
+        if (card.remoteHost) {
+          // Opening through Paseo's host-aware navigation clears attention on
+          // the owning daemon. The Tasks plugin RPC is local-only, so do not
+          // send a remote agent id to it; refresh the merged list after focus.
+          open(card.id);
+          setTimeout(() => { void latest.current.tasks.refresh(); }, 800);
+          return;
+        }
+        write(card.id, "read", () => latest.current.read.press(card));
+      } : undefined,
       onUnarchive: unarchiveAvailable ? (agentId) => write(agentId, "unarchive", () => latest.current.unarchive.press(agentId)) : undefined,
       onArchive: (agentId) => write(agentId, "archive", () => latest.current.archive.press(agentId)),
       onPermission: (card, button) => {
